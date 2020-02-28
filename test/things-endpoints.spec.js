@@ -25,6 +25,55 @@ describe('Things Endpoints', function() {
 
   afterEach('cleanup', () => helpers.cleanTables(db))
 
+  describe(`Protected endpoints`, () => {
+    beforeEach(`insert things`, () => 
+      helpers.seedThingsTables(
+        db,
+        testUsers,
+        testThings,
+        testReviews
+      )
+    )
+
+    const protectedEndpoints = [
+      {
+        name: 'GET /api/things/:things_id',
+        path: '/api/things/1'
+      },
+      {
+        name: 'GET /api/things/:things_id/reviews',
+        path: '/api/things/1/reviews'
+      }
+    ]
+    
+    protectedEndpoints.forEach(endpoint => {
+      describe(endpoint.name, () => {
+        it(`responds with 401 'Missing bearer token' when basic token`, () => {
+          return supertest(app)
+            .get(endpoint.path)
+            .expect(401, { error: 'Missing bearer token' })
+        })
+
+        it(`responds with 401 'Unauthorized request' when invalid jwt secret`, () => {
+          const validUser = testUsers[0];
+          const invalidSecret = 'bad-secret';
+          return supertest(app)
+            .get(endpoint.path)
+            .set('Authorization', helpers.makeAuthHeader(validUser, invalidSecret))
+            .expect(401, { error: 'Unauthorized request' })
+        })
+
+        it(`responds with 401 'Unauthorized request' when sub in payload`, () => {
+          const invalidUser = { user_name: 'user-not', id: 1 };
+          return supertest(app)
+            .get(endpoint.path)
+            .set('Authorization', helpers.makeAuthHeader(invalidUser))
+            .expect(401, { error: 'Unauthorized request' })
+        })
+      })
+    })
+  })
+
   describe(`GET /api/things`, () => {
     context(`Given no things`, () => {
       it(`responds with 200 and an empty list`, () => {
@@ -87,10 +136,15 @@ describe('Things Endpoints', function() {
 
   describe(`GET /api/things/:thing_id`, () => {
     context(`Given no things`, () => {
+      beforeEach(() => 
+        helpers.seedUsers(db, testUsers)
+      )
+
       it(`responds with 404`, () => {
         const thingId = 123456
         return supertest(app)
           .get(`/api/things/${thingId}`)
+          .set('Authorization', helpers.makeAuthHeader(testUsers[0]))
           .expect(404, { error: `Thing doesn't exist` })
       })
     })
@@ -115,6 +169,7 @@ describe('Things Endpoints', function() {
 
         return supertest(app)
           .get(`/api/things/${thingId}`)
+          .set('Authorization', helpers.makeAuthHeader(testUsers[0]))
           .expect(200, expectedThing)
       })
     })
@@ -137,6 +192,7 @@ describe('Things Endpoints', function() {
       it('removes XSS attack content', () => {
         return supertest(app)
           .get(`/api/things/${maliciousThing.id}`)
+          .set('Authorization', helpers.makeAuthHeader(testUser))
           .expect(200)
           .expect(res => {
             expect(res.body.title).to.eql(expectedThing.title)
@@ -148,10 +204,15 @@ describe('Things Endpoints', function() {
 
   describe(`GET /api/things/:thing_id/reviews`, () => {
     context(`Given no things`, () => {
+      beforeEach(() => 
+        helpers.seedUsers(db, testUsers)
+      )
+
       it(`responds with 404`, () => {
         const thingId = 123456
         return supertest(app)
           .get(`/api/things/${thingId}/reviews`)
+          .set('Authorization', helpers.makeAuthHeader(testUsers[0]))
           .expect(404, { error: `Thing doesn't exist` })
       })
     })
@@ -174,6 +235,7 @@ describe('Things Endpoints', function() {
 
         return supertest(app)
           .get(`/api/things/${thingId}/reviews`)
+          .set('Authorization', helpers.makeAuthHeader(testUsers[0]))
           .expect(200, expectedReviews)
       })
     })
